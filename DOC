@@ -1,0 +1,18 @@
+classes:
+- Configuration
+- JobQueue
+- InotifyWait
+- Processor
+
+In order for the job to be processed, the Processor must reference the JobQueue
+Processor -> JobQueue
+
+Processor -> InotifyWait -> JobQueue -> Configuration
+
+In order for the inotifywait daemons to run, they must know what configuration to use:
+InotifyWait -> Configuration
+- InotifyWait then pushes jobs onto the JobQueue.
+
+
+
+
