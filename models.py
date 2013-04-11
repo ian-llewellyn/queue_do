@@ -87,9 +87,11 @@ class Processor(dict):
                 self.__setitem__(i, self.CPU_IDLE_FLAG)
 
     def active(self):
+        retval = False
         for cpu_status in self.values():
-            return cpu_status != self.CPU_IDLE_FLAG
-        return False
+            if cpu_status != self.CPU_IDLE_FLAG:
+                retval = True
+        return retval
 
     def available(self):
         self.check_jobs()
@@ -105,7 +107,7 @@ class Processor(dict):
             if cpu_status == self.CPU_IDLE_FLAG:
                 # No process on this CPU
                 continue
-            elif type(cpu_status['process'].poll()) == type(None):
+            elif cpu_status['process'].poll() == None:
                 # Process is still running
                 continue
             elif cpu_status['process'].poll() == 0:
