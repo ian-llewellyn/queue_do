@@ -1,7 +1,7 @@
 from django.db import models
 import subprocess # call
 import select # select
-import affinity #set_process_affinity_mask
+import affinity # set_process_affinity_mask
 
 # Create your models here.
 
@@ -137,7 +137,7 @@ class Processor(dict):
         except:
             job.status = 'fail'
         else:
-            mask = 2**(cpu-1)
+            mask = 2**(cpu)
             affinity.set_process_affinity_mask(self.__getitem__(cpu)['process'].pid, mask)
         finally:
             job.save()
