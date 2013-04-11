@@ -11,7 +11,8 @@ def terminate(a, b):
     # - send SIGTERM to all child processes
     for inotify in inotifys:
         inotify.stop()
-    for cpu_status in processor:
+    for cpu in processor:
+        cpu_status = processor[cpu]
         if cpu_status == processor.CPU_IDLE_FLAG:
             continue
         cpu_status['process'].terminate()
@@ -26,9 +27,12 @@ def finish_current(a, b):
     for inotify in inotifys:
         inotify.stop()
     # - wait until active jobs finish
+    print 'processor.active():', processor.active()
     while processor.active():
+        print 'Processor still active'
         processor.check_jobs()
         time.sleep(MAIN_LOOP_SLEEP_TIME)
+    print 'processor.active():', processor.active()
     # - exit
     sys.exit(0)
 
@@ -37,6 +41,7 @@ def finish_current(a, b):
 signal.signal(signal.SIGTERM, terminate)
 # Ctrl-C equivelant to SIGTERM
 signal.signal(signal.SIGINT, terminate)
+signal.signal(signal.SIGINT, finish_current)
 # SIGUSR2:
 signal.signal(signal.SIGUSR2, finish_current)
 
