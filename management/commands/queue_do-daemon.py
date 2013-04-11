@@ -1,9 +1,44 @@
 from queue_do.models import Configuration, JobQueue, InotifyWait, Processor
-#import sys # exit
+import sys # exit
 import time # sleep
+import signal # signal, SIGTERM, SIGINT, SIGUSR2
 
 CPUS = 4
 MAIN_LOOP_SLEEP_TIME = 1
+
+## Signal Handling Functions
+def terminate(a, b):
+    # - send SIGTERM to all child processes
+    for inotify in inotifys:
+        inotify.stop()
+    for cpu_status in processor:
+        if cpu_status == processor.CPU_IDLE_FLAG:
+            continue
+        cpu_status['process'].terminate()
+        # - set job status to fail
+        cpu_status['job'].status = 'fail'
+        cpu_status['job'].save()
+    # - exit
+    sys.exit(1)
+
+def finish_current(a, b):
+    # - send SIGTERM to all InotfiyWait processes (no more queueing)
+    for inotify in inotifys:
+        inotify.stop()
+    # - wait until active jobs finish
+    while processor.active():
+        processor.check_jobs()
+        time.sleep(MAIN_LOOP_SLEEP_TIME)
+    # - exit
+    sys.exit(0)
+
+## Register Signal Handlers
+# SIGTERM:
+signal.signal(signal.SIGTERM, terminate)
+# Ctrl-C equivelant to SIGTERM
+signal.signal(signal.SIGINT, terminate)
+# SIGUSR2:
+signal.signal(signal.SIGUSR2, finish_current)
 
 ## Setup the processor flags:
 processor = Processor(cpus=CPUS)

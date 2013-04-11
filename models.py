@@ -1,6 +1,7 @@
 from django.db import models
 import subprocess # call
 import select # select
+import affinity #set_process_affinity_mask
 
 # Create your models here.
 
@@ -135,6 +136,9 @@ class Processor(dict):
                 'process': subprocess.Popen(popen_args_tuple)})
         except:
             job.status = 'fail'
+        else:
+            mask = 2**(cpu-1)
+            affinity.set_process_affinity_mask(self.__getitem__(cpu)['process'].pid, mask)
         finally:
             job.save()
 
