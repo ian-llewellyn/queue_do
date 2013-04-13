@@ -11,31 +11,26 @@ def terminate(a, b):
     for cpu in processor:
         cpu_status = processor[cpu]
         if cpu_status == processor.CPU_IDLE_FLAG:
+            # This CPU is idle, move on to the next one...
             continue
-        # - set job status to fail
+        # Set job status to fail
         cpu_status['job'].status = 'fail'
         cpu_status['job'].save()
-    # - exit
+    # exit (unnaturally)
     sys.exit(1)
 
 def finish_current(a, b):
-    # - send SIGTERM to all InotfiyWait processes (no more queueing)
-    for inotify in inotifys:
-        inotify.stop()
-    # - wait until active jobs finish
-    print 'processor.active():', processor.active()
+    # Wait until active jobs finish
     while processor.active():
-        print 'Processor still active'
         processor.check_jobs()
         time.sleep(MAIN_LOOP_SLEEP_TIME)
-    print 'processor.active():', processor.active()
-    # - exit
+    # exit
     sys.exit(0)
 
-## Read configuration from DB
+## Read configuration from DB and start inotify watchers
 inotifys = []
 for configuration in Configuration.objects.all():
-    # Ignore SIGUSR1 - we use this for status
+    # Ensure inotifys ignore SIGUSR1 - we use this for status
     sigusr1_handler = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
     # Instanciate InotifyWait
     inotifys.append(InotifyWait(configuration=configuration))
@@ -52,18 +47,16 @@ signal.signal(signal.SIGUSR2, finish_current)
 processor = Processor(cpus=CPUS)
 
 jobs = True	# This will skip the DB query optimisation on the first run.
-running = True
 ## MAIN LOOP
-while running:
+while 1:
     ## QUQUE INCOMING FILES - Read input (if any) from inotify instances
     for inotify in inotifys:
         #print 'Checking inotifywait with PID: %s' % inotify.process.pid
-        end_of_file = False
-        while not end_of_file:
+        while 1:
             msg = inotify.readline().strip()
             #print '[%s]' % msg
             if msg == '':
-                end_of_file = True
+                # No message read from inotify - no job to queue
                 break
             jq = JobQueue()
             jq.input_file = msg
@@ -71,8 +64,7 @@ while running:
             jq.configuration = inotify.configuration
             jq.status = 'queued'
             jq.save()
-            # This ensures that we go on to the DB SELECT query
-            jobs = True
+            jobs = True	# This ensures that we go on to the DB SELECT query
 
 
     # We could save a lot of DB SELECT queries here by continueing
