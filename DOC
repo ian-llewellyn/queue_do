@@ -14,5 +14,8 @@ In order for the job to be processed, the Processor must reference the JobQueue
 Processor -> JobQueue
 
 
-
-
+TODO
+- Daemonize: perhaps split the bulk of the running code to a separate file in the base of the project.
+- --retry-failed argument: ensure that the sort order is correct, and keeps failed items at the bottom.
+- --foreground argument: Don't daemonise the program.
+- logging
