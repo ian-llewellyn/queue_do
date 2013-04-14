@@ -33,6 +33,10 @@ class JobQueue(models.Model):
     configuration = models.ForeignKey(Configuration, blank=False, null=False)
     status = models.CharField(max_length=30, choices=JOB_QUEUE_STATUS_CHOICES)
 
+    @property
+    def duration(self):
+        return self.modified - self.added
+
     def __unicode__(self):
         return self.input_file + ': ' + self.status
 
