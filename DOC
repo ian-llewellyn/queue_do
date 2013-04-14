@@ -19,3 +19,5 @@ TODO
 - --retry-failed argument: ensure that the sort order is correct, and keeps failed items at the bottom.
 - --foreground argument: Don't daemonise the program.
 - logging
+- pid file
+- SysV init script
