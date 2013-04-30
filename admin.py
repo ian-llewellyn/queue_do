@@ -9,4 +9,12 @@ class JobQueueAdmin(admin.ModelAdmin):
     search_fields = ['input_file', ]
     list_filter = ['status', 'configuration', 'priority']
     readonly_fields = ['added', 'modified', 'duration']
+
+    # Set a selection of actions to state queued
+    actions = ['set_queueing']
+
+    def set_queueing(self, request, queryset):
+        queryset.update(status="queued")
+    set_queueing.short_description = "Queued selected jobs"
+
 admin.site.register(JobQueue, JobQueueAdmin)
