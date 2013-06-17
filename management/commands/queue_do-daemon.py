@@ -79,7 +79,7 @@ while 1:
 
 
     ## PROCESS JOBS IN QUEUE
-    status_sel = ['queued']
+    status_sel = ['queued', 'fail']
     # FIXME: Check to see if priority is the dominating ORDER BY - that is what we want.
     jobs = JobQueue.objects.filter(status__in = status_sel) \
         .order_by('-status') \
