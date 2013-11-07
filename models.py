@@ -64,7 +64,8 @@ class InotifyWait:
             # ^.*\/\.[^\/]*$ - Ensure we are operating on the file part of the input.
             popen_args_tuple += ('--exclude', self.configuration.filter)
         popen_args_tuple += tuple(self.configuration.watch_dir.split(', '))
-        #print popen_args_tuple
+
+        #logger.debug('InotifyWait Popen args: %s' % ' '.join(popen_args_tuple))
         self.process = subprocess.Popen(popen_args_tuple, stdout=subprocess.PIPE)
 
     def stop(self):
@@ -134,7 +135,7 @@ class Processor(dict):
         # cpu is the processor to use
         popen_args_tuple = tuple(job.configuration.run_script.split(' '))
         popen_args_tuple += (job.input_file,)
-        #print popen_args_tuple
+        #logger.debug('Job Popen args: %s' % ' '.join(popen_args_tuple))
         try:
             job.status = 'processing'
             self.__setitem__(cpu, {

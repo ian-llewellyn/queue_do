@@ -1,105 +1,45 @@
+from django.core.management.base import BaseCommand
+from queue_do.single_instance import SingleInstance
+from queue_do.daemon import Daemon
+from optparse import make_option
+
 from queue_do.models import Configuration, JobQueue, InotifyWait, Processor
+
 import sys # exit
 import time # sleep
 import signal # signal, SIGTERM, SIGINT, SIGUSR2
+import logging
 
-CPUS = 4
-MAIN_LOOP_SLEEP_TIME = 1
+logger = logging.getLogger(__name__)
 
-## Signal Handling Functions
-def terminate(a, b):
-    for cpu in processor:
-        cpu_status = processor[cpu]
-        if cpu_status == processor.CPU_IDLE_FLAG:
-            # This CPU is idle, move on to the next one...
-            continue
-        # Set job status to fail
-        cpu_status['job'].status = 'fail'
-        cpu_status['job'].save()
-    # exit (unnaturally)
-    sys.exit(1)
+class Command(BaseCommand, SingleInstance):
+    help = """
+    This daemon runs an inotifywait on each configured diectory. For each file
+    that is detected, a job is added to the Job Queue from where a separate
+    thread picks it up and runs the pre-configured arbitrary program.
 
-def finish_current(a, b):
-    # Wait until active jobs finish
-    while processor.active():
-        processor.check_jobs()
-        time.sleep(MAIN_LOOP_SLEEP_TIME)
-    # exit
-    sys.exit(0)
+    --retry-failed: flag to force retry of failed items
+    --progid NAME: optional name to give the lockfile
+    """
 
-## Read configuration from DB and start inotify watchers
-inotifys = []
-for configuration in Configuration.objects.all():
-    # Ensure inotifys ignore SIGUSR1 - we use this for status
-    sigusr1_handler = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
-    # Instanciate InotifyWait
-    inotifys.append(InotifyWait(configuration=configuration))
+    option_list = BaseCommand.option_list + (
+        make_option('--progid',
+            action='store',
+            dest='progid',
+            default="queue_do-daemon",
+            help='Programme name for lock file'),
+        make_option('--retry-failed',
+            action='store_true',
+            dest='retry_failed',
+            default=False,
+            help='Retry failed items in queue'),
+        )
 
-## Register Signal Handlers
-# SIGTERM:
-signal.signal(signal.SIGTERM, terminate)
-# Ctrl-C equivelant to SIGTERM
-signal.signal(signal.SIGINT, terminate)
-# SIGUSR2:
-signal.signal(signal.SIGUSR2, finish_current)
+    def handle(self, *args, **kwargs):
+        self.SingleInstance(kwargs['progid'])
 
-## Setup the processor flags:
-processor = Processor(cpus=CPUS)
+        logger.info('Queue_Do Daemon started')
+        daemon = Daemon()
+        daemon.start(retry_failed=kwargs['retry_failed'])
+        logger.info('Queue_Do Daemon ended')
 
-jobs = True	# This will skip the DB query optimisation on the first run.
-## MAIN LOOP
-while 1:
-    ## QUQUE INCOMING FILES - Read input (if any) from inotify instances
-    for inotify in inotifys:
-        #print 'Checking inotifywait with PID: %s' % inotify.process.pid
-        while 1:
-            msg = inotify.readline().strip()
-            #print '[%s]' % msg
-            if msg == '':
-                # No message read from inotify - no job to queue
-                break
-            jq = JobQueue()
-            jq.input_file = msg
-            jq.priority = inotify.configuration.default_priority
-            jq.configuration = inotify.configuration
-            jq.status = 'queued'
-            jq.save()
-            jobs = True	# This ensures that we go on to the DB SELECT query
-
-
-    # We could save a lot of DB SELECT queries here by continueing
-    # here in the event that all jobs have been completed,
-    # and no more files have been received through inotify.
-    if not jobs:
-        if processor.active():
-            processor.check_jobs()
-        continue
-    # The downside is that putting a job in the queue from the Django admin
-    # interface will have no effect until a job is queued via this daemon.
-
-
-    ## PROCESS JOBS IN QUEUE
-    status_sel = ['queued', 'fail']
-    # FIXME: Check to see if priority is the dominating ORDER BY - that is what we want.
-    jobs = JobQueue.objects.filter(status__in = status_sel) \
-        .order_by('-status') \
-        .order_by('added') \
-        .order_by('priority')
-
-
-    for job in jobs:
-        if processor.available():
-            # Stop certain signals from getting to children
-            sigusr1_handler = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
-            sigusr2_handler = signal.signal(signal.SIGUSR2, signal.SIG_IGN)
-            # Start the job
-            processor.start_job(job)
-            # Reset signal handlers
-            signal.signal(signal.SIGUSR1, sigusr1_handler)
-            signal.signal(signal.SIGUSR2, sigusr2_handler)
-        else:
-            # No processors are available
-            break
-    # All CPUs in use or all jobs started
-
-    time.sleep(MAIN_LOOP_SLEEP_TIME)
