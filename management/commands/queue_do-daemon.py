@@ -10,7 +10,7 @@ import time # sleep
 import signal # signal, SIGTERM, SIGINT, SIGUSR2
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('queue_do.daemon')
 
 class Command(BaseCommand, SingleInstance):
     help = """
@@ -38,8 +38,7 @@ class Command(BaseCommand, SingleInstance):
     def handle(self, *args, **kwargs):
         self.SingleInstance(kwargs['progid'])
 
-        logger.info('Queue_Do Daemon started')
+        logger.info('Starting Queue_Do Daemon')
         daemon = Daemon()
         daemon.start(retry_failed=kwargs['retry_failed'])
-        logger.info('Queue_Do Daemon ended')
-
+        logger.critical('Queue_Do Daemon ended')

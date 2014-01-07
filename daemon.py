@@ -12,7 +12,7 @@ import logging
 CPUS = 4
 MAIN_LOOP_SLEEP_TIME = 1
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('queue_do.daemon')
 
 class Daemon(object):
     ## Signal Handling Functions
