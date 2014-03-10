@@ -40,6 +40,24 @@ class JobQueue(models.Model):
     def __unicode__(self):
         return self.input_file + ': ' + self.status
 
+    @classmethod
+    def PurgeQueue(cls, days, remove_failed=False):
+        import logging, datetime
+        cutoff_date = (datetime.datetime.now() - datetime.timedelta(
+            days=days)).strftime('%Y-%m-%d')
+
+        logger = logging.getLogger('queue_do.purge_queue')
+        logger.info('Clearing items older than %s' % cutoff_date)
+
+        cutoff_date += ' 00:00:00Z'
+
+        STATUSES = ['success']
+        if remove_failed: STATUSES.append('fail')
+
+        jobs = cls.objects.filter(modified__lt=cutoff_date).filter(status__in=STATUSES)
+        logger.info('Deleting %d jobs from the Job Queue' % len(jobs))
+        jobs.delete()
+
 class InotifyWait:
     INOTIFYWAIT_CMD = 'inotifywait'
     INOTIFYWAIT_ARGS = '--quiet --monitor --event CLOSE_WRITE --event MOVED_TO --format %w%f'
