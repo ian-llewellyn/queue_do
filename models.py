@@ -23,6 +23,7 @@ class JobQueue(models.Model):
         ('queued', 'Waiting in Queue'),
         ('processing', 'Processing'),
         ('success', 'Completed'),
+        ('startfail', 'Failed to Start'),
         ('fail', 'Failed')]
     input_file = models.CharField(max_length=1024, blank=False, null=False,
         help_text='The file that was captured by inotfywait and made it through the filter.')
@@ -32,6 +33,8 @@ class JobQueue(models.Model):
     modified = models.DateTimeField(auto_now=True)
     configuration = models.ForeignKey(Configuration, blank=False, null=False)
     status = models.CharField(max_length=30, choices=JOB_QUEUE_STATUS_CHOICES)
+    error = models.TextField(null=True, blank=True, editable=False)
+    failure_count = models.IntegerField(default=0)
 
     @property
     def duration(self):
@@ -142,6 +145,7 @@ class Processor(dict):
                 # Failure of some sort
                 # Update job to Failed status and save
                 cpu_status['job'].status = 'fail'
+                cpu_status['job'].error = cpu_status['process'].stderr.read() + '\n'
                 cpu_status['job'].save()
                 self.__setitem__(cpu, self.CPU_IDLE_FLAG)
 
@@ -158,9 +162,11 @@ class Processor(dict):
             job.status = 'processing'
             self.__setitem__(cpu, {
                 'job': job,
-                'process': subprocess.Popen(popen_args_tuple)})
-        except:
-            job.status = 'fail'
+                'process': subprocess.Popen(popen_args_tuple, stderr=subprocess.PIPE)})
+        except Exception, e:
+            job.status = 'startfail'
+            job.error = str(e)
+            job.failure_count += 1
         else:
             mask = 2**(cpu)
             affinity.set_process_affinity_mask(self.__getitem__(cpu)['process'].pid, mask)
