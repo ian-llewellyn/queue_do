@@ -11,6 +11,8 @@ import logging
 
 CPUS = 4
 MAIN_LOOP_SLEEP_TIME = 1
+DB_CHECK_INTERVAL = 60
+RETRIES = 3
 
 logger = logging.getLogger('queue_do.daemon')
 
@@ -44,7 +46,7 @@ class Daemon(object):
         for configuration in Configuration.objects.all():
             # Ensure inotifys ignore SIGUSR1 - we use this for status
             sigusr1_handler = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
-            # Instanciate InotifyWait
+            # Instantiate InotifyWait
             self.inotifys.append(InotifyWait(configuration=configuration))
 
         ## Register Signal Handlers
@@ -58,13 +60,21 @@ class Daemon(object):
         ## Setup the processor flags:
         self.processor = Processor(cpus=CPUS)
 
-        jobs = True	# This will skip the DB query optimisation on the first run.
+        ## Timer to reduce frequency of database SELECTs
+        last_db_check = 0
+
+        # Ensure we check the DB on the first run.
+        check_db = True
+
+        # Initiate an empty jobs array
+        jobs = []
+
         ## MAIN LOOP
-        while 1:
+        while True:
             ## QUQUE INCOMING FILES - Read input (if any) from inotify instances
             for inotify in self.inotifys:
                 logger.debug('Checking inotifywait with PID: %s' % inotify.process.pid)
-                while 1:
+                while True:
                     msg = inotify.readline().strip()
                     logger.debug('inotifywait output: %s' % msg)
                     if msg == '':
@@ -78,36 +88,48 @@ class Daemon(object):
                     jq.status = 'queued'
                     jq.save()
                     logger.info('Added Job Queue: %s' % jq)
-                    jobs = True	# This ensures that we go on to the DB SELECT query
+                    check_db = True	# This ensures that we go on to the DB SELECT query
 
 
-            # We could save a lot of DB SELECT queries here by continueing
-            # here in the event that all jobs have been completed,
-            # and no more files have been received through inotify.
-            if not jobs:
-                if self.processor.active():
-                    self.processor.check_jobs()
-                continue
-            # The downside is that putting a job in the queue from the Django admin
-            # interface will have no effect until a job is queued via this daemon.
+            ## DATABASE BIT
+            if time.time() >= (last_db_check + DB_CHECK_INTERVAL):
+                # If DB_CHECK_INTERVAL has elapsed, we will want to do a DB SELECT.
+                check_db = True
+
+            # Database query
+            if check_db:
+                status_sel = ['queued']
+                if retry_failed:
+                    status_sel.append('fail')
+                jobs = JobQueue.objects.filter(status__in=status_sel) \
+                    .exclude(status='fail', failure_count__gt=RETRIES) \
+                    .order_by('-status') \
+                    .order_by('added') \
+                    .order_by('priority')
+                # Reset check_db in order to wait DB_CHECK_INTERVAL seconds
+                last_db_check = time.time()
+                check_db = False
+
+
+            ## HOUSEKEEPING
+            if self.processor.active():
+                # Check previously running jobs, and reset the CPU to available.
+                self.processor.check_jobs()
 
 
             ## PROCESS JOBS IN QUEUE
-            status_sel = ['queued']
-            if retry_failed:
-                status_sel.append('fail')
-            # FIXME: Check to see if priority is the dominating ORDER BY - that is what we want.
-            jobs = JobQueue.objects.filter(status__in = status_sel) \
-                .order_by('-status') \
-                .order_by('added') \
-                .order_by('priority')
+            # convert to a list
+            jobs = [job for job in jobs]
 
-
-            for job in jobs:
+            # Process each item
+            while len(jobs) > 0:
                 if not self.processor.available():
                     # No processors are available
                     logger.info('No processors are available, waiting...')
                     break
+
+                # Pop the job to be processed
+                job = jobs.pop(0)
 
                 # Stop certain signals from getting to children
                 sigusr1_handler = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
@@ -118,6 +140,7 @@ class Daemon(object):
                 # Reset signal handlers
                 signal.signal(signal.SIGUSR1, sigusr1_handler)
                 signal.signal(signal.SIGUSR2, sigusr2_handler)
+
 
             # All CPUs in use, all jobs started or no jobs to process
             logger.debug('Sleeping for %s seconds.' % MAIN_LOOP_SLEEP_TIME)

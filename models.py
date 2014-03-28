@@ -145,6 +145,7 @@ class Processor(dict):
                 # Failure of some sort
                 # Update job to Failed status and save
                 cpu_status['job'].status = 'fail'
+                cpu_status['job'].failure_count += 1
                 cpu_status['job'].error = cpu_status['process'].stderr.read() + '\n'
                 cpu_status['job'].save()
                 self.__setitem__(cpu, self.CPU_IDLE_FLAG)
